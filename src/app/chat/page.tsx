@@ -1,7 +1,8 @@
+import LayoutChat from "@/components/sections/chat/LayoutChat";
 import React from "react";
 
 const Chat = () => {
-  return <div>Chat</div>;
+  return <LayoutChat />;
 };
 
 export default Chat;

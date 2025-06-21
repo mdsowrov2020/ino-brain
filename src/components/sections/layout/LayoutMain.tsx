@@ -9,7 +9,7 @@ const LayoutMain = ({ children }: LayoutMainProps) => {
   return (
     <div className="flex ">
       <Sidebar />
-      <main className="full sm:w-[calc(100%_-_280px)] h-screen ">
+      <main className="w-full sm:w-[calc(100%_-_280px)] h-screen ">
         <div className="p-7">{children}</div>
       </main>
     </div>
