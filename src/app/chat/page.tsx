@@ -1,4 +1,4 @@
-import LayoutChat from "@/components/sections/chat/LayoutChat";
+import LayoutChat from "@/features/chat/components/LayoutChat";
 import React from "react";
 
 const Chat = () => {

@@ -6,12 +6,12 @@ const DocumentList = () => {
     <ul>
       <li
         className={`${
-          isSelected ? "border-2 border-green-600/50 text-green-500" : ""
-        } my-1 py-2 pl-2 bg-gray-700/50 rounded-sm`}
+          isSelected ? " text-green-500" : ""
+        } my-1 py-1 pl-2  rounded-sm cursor-pointer`}
       >
         <span>01. Research_Paper.pdf</span>
       </li>
-      <li className="my-1 py-2 pl-2 bg-gray-700/50 rounded-sm">
+      <li className="my-1 py-1 pl-2  rounded-sm cursor-pointer">
         <span>02. Meeting_Notes.txt</span>
       </li>
     </ul>

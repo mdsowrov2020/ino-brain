@@ -19,7 +19,7 @@ const Button = ({
   className,
 }: ButtonProps) => {
   const baseClasses = clsx(
-    "border-none rounded-sm font-medium transition-colors duration-200 flex items-center justify-center gap-2 cursor-pointer",
+    "border-none rounded-full font-medium transition-colors duration-200 flex items-center justify-center gap-2 cursor-pointer",
     {
       // Sizes
       "py-1 px-4 text-sm": size === "small",
@@ -27,7 +27,8 @@ const Button = ({
       "py-3 px-8 text-lg": size === "large",
 
       // Variations
-      "bg-orange-600 text-gray-50 hover:bg-orange-700": variation === "primary",
+      "bg-gray-200 text-gray-800 hover:bg-gray-500 hover:text-gray-300":
+        variation === "primary",
       "bg-gray-200 text-gray-800 hover:bg-gray-300": variation === "secondary",
       "bg-red-600 text-white hover:bg-red-700": variation === "danger",
       "bg-transparent border border-gray-300 text-gray-700 hover:bg-gray-100":

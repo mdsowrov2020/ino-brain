@@ -1,5 +1,5 @@
 import Title from "@/components/ui/Title";
-import UploadFile from "@/components/ui/UploadFile";
+import UploadDocuments from "@/features/upload-documents/UploadDocuments";
 import React from "react";
 
 const Upload = () => {
@@ -10,7 +10,7 @@ const Upload = () => {
       </header>
 
       <div className="mt-5">
-        <UploadFile />
+        <UploadDocuments />
       </div>
     </div>
   );

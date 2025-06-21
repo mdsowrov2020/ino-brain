@@ -8,7 +8,13 @@ const LayoutChat = () => {
       <aside className="w-[250px] sm:w-[300px] h-auto">
         <Documents />
       </aside>
-      <ChatContainer />
+
+      <div className=" h-[85vh] w-[calc(100%_-_300px)]">
+        <header className="bg-gray-500/30  px-3 py-5 rounded-tl-md rounded-tr-md">
+          <h4>Research_Paper.Pdf</h4>
+        </header>
+        <ChatContainer />
+      </div>
     </div>
   );
 };
