@@ -86,7 +86,7 @@ const UploadFile = () => {
 
   const triggerFileInput = () => {
     if (fileInputRef.current) {
-      fileInputRef.current.value = ""; // Reset to allow selecting same file again
+      fileInputRef.current.value = "";
       fileInputRef.current.click();
     }
   };
