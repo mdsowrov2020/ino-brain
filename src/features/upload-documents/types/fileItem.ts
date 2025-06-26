@@ -4,6 +4,7 @@ export type FileItem = {
   type: "PDF" | "DOCX" | "TXT" | "MD" | "HTML";
   size: string;
   date: string;
-  status: "Uploaded" | "Processing" | "Failed";
+  status: string;
   url?: string;
+  process?: boolean;
 };

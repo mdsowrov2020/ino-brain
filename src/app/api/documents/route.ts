@@ -34,23 +34,45 @@ export async function GET() {
     );
   }
 }
-
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
-    console.log(formData);
     const file = formData.get("file") as File;
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    // Unique file name
-    const fileName = `${Date.now()}-${file.name}`;
-    const filePath = `documents/${fileName}`;
+    // Use original file name here, or you can use your unique naming scheme if preferred
+    const fileName = file.name;
+    const filePath = fileName;
     const fileType = fileName.split(".").pop()?.toLowerCase() || "unknown";
     const fileSize = file.size;
 
-    // Store file on bucket
+    // Check if file already exists in bucket
+    const { data: existingFiles, error: listError } = await supabase.storage
+      .from("documents")
+      .list("", { search: fileName }); // List files with matching name
+
+    if (listError) {
+      console.error("List files error:", listError);
+      return NextResponse.json(
+        { error: "Failed to check existing files" },
+        { status: 500 }
+      );
+    }
+
+    const fileExists = existingFiles.some(
+      (fileItem) => fileItem.name === fileName
+    );
+
+    if (fileExists) {
+      return NextResponse.json(
+        { error: "File with the same name already exists" },
+        { status: 409 } // Conflict status code
+      );
+    }
+
+    // Proceed with upload
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from("documents")
       .upload(filePath, file);

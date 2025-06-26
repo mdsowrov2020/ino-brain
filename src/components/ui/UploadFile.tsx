@@ -21,13 +21,10 @@ import {
 } from "@/utils/helper";
 import { FileItem } from "@/features/upload-documents/types/fileItem";
 
-// Allowed types & max size
 const allowedExtensions = [".pdf", ".docx", ".txt", ".md", ".html"];
-
-const maxFileSize = 10 * 1024 * 1024; // 10MB
+const maxFileSize = 10 * 1024 * 1024;
 
 const UploadFile = () => {
-  // State & Refs
   const [files, setFiles] = useState<FileItem[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>(
@@ -35,35 +32,33 @@ const UploadFile = () => {
   );
   const [errors, setErrors] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isProcessed, setIsProcessed] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const validateFile = (file: File): string | null => {
-    const extension = `.${file.name.split(".").pop()?.toLowerCase()}`;
-    if (!allowedExtensions.includes(extension)) {
-      return `File type ${extension} is not allowed. Accepted types: ${allowedExtensions.join(
+    const ext = `.${file.name.split(".").pop()?.toLowerCase()}`;
+    if (!allowedExtensions.includes(ext)) {
+      return `File type ${ext} not allowed. Accepted: ${allowedExtensions.join(
         ", "
       )}`;
     }
     if (file.size > maxFileSize) {
-      return `File size must be less than 10MB. Current size: ${(
-        file.size /
-        1024 /
-        1024
-      ).toFixed(2)}MB`;
+      return `File too large (${(file.size / 1024 / 1024).toFixed(
+        2
+      )}MB). Max: 10MB`;
     }
     return null;
   };
 
-  // API Calls
   const fetchFiles = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch("/api/documents");
-      if (!response.ok) throw new Error("Failed to fetch documents");
+      const res = await fetch("/api/documents");
+      if (!res.ok) throw new Error("Failed to fetch documents");
 
-      const data = await response.json();
-      const transformedFiles: FileItem[] = data.map((item: any) => ({
+      const data = await res.json();
+      const transformed: FileItem[] = data.map((item: any) => ({
         id: item.id.toString(),
         name: item.fileName || item.name,
         type: getFileType(item.fileName || item.name),
@@ -71,19 +66,65 @@ const UploadFile = () => {
         date: new Date(item.created_at || item.createdAt).toLocaleString(),
         status: "Uploaded",
         url: item.fileUrl || item.url,
+        process: item.process ?? false,
       }));
 
-      setFiles(transformedFiles);
-    } catch (error) {
-      console.error("Error fetching files:", error);
+      setFiles(transformed);
+    } catch (e) {
       setErrors((prev) => [...prev, "Failed to load documents"]);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const processFile = async (documentId: string) => {
+    if (!documentId) return { success: false, error: "Missing document ID" };
+
+    try {
+      const response = await fetch("/api/documents/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentId }),
+      });
+
+      const responseText = await response.text();
+
+      if (!responseText.trim()) {
+        return { success: false, error: "Empty server response" };
+      }
+
+      let parsed;
+      try {
+        parsed = JSON.parse(responseText);
+      } catch {
+        return responseText.includes("<html")
+          ? { success: false, error: "Server returned HTML instead of JSON" }
+          : {
+              success: false,
+              error: `Invalid JSON: ${responseText.slice(0, 200)}...`,
+            };
+      }
+
+      if (!response.ok) {
+        return { success: false, error: parsed?.error || "Processing failed" };
+      }
+
+      return parsed.success
+        ? { success: true, data: parsed.data }
+        : {
+            success: false,
+            error: parsed?.error || "Unknown processing error",
+          };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err?.message || "Unexpected error",
+      };
+    }
+  };
+
   const uploadFile = async (file: File) => {
-    const tempId = `temp-${Date.now()}-${Math.random()}`;
+    const tempId = `temp-${Date.now()}`;
     const newFile: FileItem = {
       id: tempId,
       name: file.name,
@@ -91,6 +132,7 @@ const UploadFile = () => {
       size: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
       date: new Date().toLocaleString(),
       status: "Processing",
+      process: false,
     };
 
     setFiles((prev) => [newFile, ...prev]);
@@ -100,41 +142,69 @@ const UploadFile = () => {
       const formData = new FormData();
       formData.append("file", file);
 
+      // ================
+
+      // ===============
+
       const response = await fetch("/api/documents", {
         method: "POST",
         body: formData,
       });
-      const result = await response.json();
 
-      if (response.ok) {
+      const text = await response.text();
+      let result;
+      try {
+        result = JSON.parse(text);
+      } catch {
+        throw new Error("Non-JSON server response");
+      }
+
+      if (!response.ok) throw new Error(result.error || "Upload failed");
+
+      const actualId = result.id || `uploaded-${Date.now()}`;
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === tempId
+            ? {
+                ...f,
+                id: actualId,
+                status: "Uploaded",
+                url: result.url,
+                process: false,
+              }
+            : f
+        )
+      );
+      setUploadProgress((prev) => ({ ...prev, [tempId]: 100 }));
+
+      const processed = await processFile(actualId);
+
+      if (processed.success) {
         setFiles((prev) =>
           prev.map((f) =>
-            f.id === tempId
-              ? {
-                  ...f,
-                  id: `uploaded-${Date.now()}`,
-                  status: "Uploaded",
-                  url: result.url,
-                  size: result.fileSize || f.size,
-                }
+            f.id === actualId ? { ...f, status: "Processed", process: true } : f
+          )
+        );
+        setIsProcessed(true);
+      } else {
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.id === actualId
+              ? { ...f, status: "Processing Failed", process: false }
               : f
           )
         );
-        setUploadProgress((prev) => ({ ...prev, [tempId]: 100 }));
-        setTimeout(fetchFiles, 1000);
-      } else {
-        throw new Error(result.error);
+        setErrors((prev) => [...prev, `Processing error: ${processed.error}`]);
       }
-    } catch (error) {
-      console.error("Upload error:", error);
+
+      setTimeout(fetchFiles, 1000);
+    } catch (err: any) {
       setFiles((prev) =>
         prev.map((f) => (f.id === tempId ? { ...f, status: "Failed" } : f))
       );
       setErrors((prev) => [
         ...prev,
-        `Failed to upload ${file.name}: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`,
+        `Upload error: ${err?.message || "Unknown"}`,
       ]);
     } finally {
       setTimeout(() => {
@@ -147,102 +217,57 @@ const UploadFile = () => {
     }
   };
 
-  const removeFile = async (fileId: number) => {
+  const removeFile = async (fileId: number | string) => {
     try {
-      const response = await fetch(`/api/documents/${fileId}`, {
-        method: "DELETE",
-      });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to delete file");
-      }
-      setFiles((prev) => prev.filter((f) => +f.id !== fileId));
-    } catch (error) {
-      console.error("Delete error:", error);
-      setErrors((prev) => [
-        ...prev,
-        `Failed to delete file: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`,
-      ]);
+      const res = await fetch(`/api/documents/${fileId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete file");
+      setFiles((prev) => prev.filter((f) => f.id !== fileId.toString()));
+    } catch (err: any) {
+      setErrors((prev) => [...prev, `Delete error: ${err.message}`]);
     }
   };
 
-  // Handlers
   const handleFiles = useCallback(async (fileList: FileList | File[]) => {
-    const filesArray = Array.from(fileList);
-    const validationErrors: string[] = [];
-    const validFiles: File[] = [];
+    const filesArr = Array.from(fileList);
+    const errors: string[] = [];
+    const valid: File[] = [];
 
-    filesArray.forEach((file) => {
-      const error = validateFile(file);
-      if (error) validationErrors.push(error);
-      else validFiles.push(file);
-    });
-
-    setErrors(validationErrors);
-    for (const file of validFiles) await uploadFile(file);
-  }, []);
-
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files?.length) handleFiles(event.target.files);
-  };
-
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const rect = e.currentTarget.getBoundingClientRect();
-    const { clientX: x, clientY: y } = e;
-    if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
-      setIsDragOver(false);
+    for (const f of filesArr) {
+      const error = validateFile(f);
+      if (error) errors.push(error);
+      else valid.push(f);
     }
+
+    setErrors(errors);
+    for (const file of valid) await uploadFile(file);
   }, []);
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragOver(false);
-      if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
-    },
-    [handleFiles]
-  );
-
-  const refreshFiles = async () => {
-    setIsRefreshing(true);
-    await fetchFiles();
-    setIsRefreshing(false);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.length) handleFiles(e.target.files);
   };
 
-  const triggerFileInput = () => {
-    fileInputRef.current?.click();
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
   };
 
-  const clearErrors = () => setErrors([]);
-
-  // Columns
   const columns: ColumnDefinition<FileItem, keyof FileItem>[] = [
     {
       key: "name",
       header: "Name",
-      sortable: true,
-      render: (value, row) => (
+      render: (val, row) => (
         <div className="flex items-center">
           <FiFile className="h-5 w-5 text-gray-400" />
           <div className="ml-4">
             <div className="text-sm font-medium text-gray-200 truncate max-w-xs">
-              {value}
+              {val}
             </div>
             {uploadProgress[row.id] !== undefined && (
               <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
                 <div
-                  className="bg-blue-600 h-1 rounded-full transition-all duration-300"
+                  className="bg-blue-600 h-1 rounded-full transition-all"
                   style={{ width: `${uploadProgress[row.id]}%` }}
                 />
               </div>
@@ -254,23 +279,22 @@ const UploadFile = () => {
     {
       key: "type",
       header: "Type",
-      sortable: true,
       render: (value) => (
         <span className={`text-sm ${getTypeColor(value)}`}>{value}</span>
       ),
     },
-    { key: "size", header: "Size", sortable: true },
-    { key: "date", header: "Date", sortable: true },
+    { key: "size", header: "Size" },
+    { key: "date", header: "Date" },
     {
       key: "status",
       header: "Status",
-      render: (value) => (
+      render: (_, row) => (
         <span
-          className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(
-            value
+          className={`px-2 text-xs font-semibold rounded-full ${getStatusColor(
+            row.status
           )}`}
         >
-          {value}
+          {row.process ? "Processed" : row.status}
         </span>
       ),
     },
@@ -283,121 +307,99 @@ const UploadFile = () => {
             <a
               href={row.url}
               target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:text-blue-900 p-1"
+              rel="noreferrer"
+              className="text-blue-600 p-1"
             >
               <FiDownload className="h-4 w-4" />
             </a>
           )}
           <button
             onClick={() => removeFile(row.id)}
-            className="text-red-600 hover:text-red-900 p-1"
+            className="text-red-600 p-1"
           >
             <FiTrash2 className="h-4 w-4" />
-          </button>
-          <button className="text-gray-600 hover:text-gray-900 p-1">
-            <FiMoreVertical className="h-4 w-4" />
           </button>
         </div>
       ),
     },
   ];
 
-  // Initial Load
   useEffect(() => {
     fetchFiles();
   }, []);
 
-  // Render
   return (
     <>
-      {/** Error Messages */}
       {errors.length > 0 && (
         <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
-          <div className="flex items-center justify-between">
+          <div className="flex justify-between items-center">
             <div className="flex items-center">
               <FiAlertCircle className="h-5 w-5 text-red-400 mr-2" />
               <h3 className="text-sm font-medium text-red-800">
                 Upload Errors
               </h3>
             </div>
-            <button
-              onClick={clearErrors}
-              className="text-red-400 hover:text-red-600"
-            >
+            <button onClick={() => setErrors([])} className="text-red-400">
               <FiX className="h-4 w-4" />
             </button>
           </div>
-          <div className="mt-2">
-            {errors.map((err, idx) => (
-              <p key={idx} className="text-sm text-red-700">
-                {err}
-              </p>
+          <div className="mt-2 text-sm text-red-700 space-y-1">
+            {errors.map((err, i) => (
+              <p key={i}>{err}</p>
             ))}
           </div>
         </div>
       )}
 
-      {/** Loading State */}
       {isLoading && (
-        <div className="mb-4 p-8 text-center">
-          <FiRefreshCw className="h-8 w-8 text-gray-400 mx-auto animate-spin mb-2" />
+        <div className="text-center p-8">
+          <FiRefreshCw className="h-8 w-8 text-gray-400 animate-spin mx-auto mb-2" />
           <p className="text-gray-600">Loading documents...</p>
         </div>
       )}
 
-      {/** Drop Zone */}
       <div
-        className={`rounded-md bg-gray-700/15 border-2 border-dashed h-[250px] w-full p-8 text-center cursor-pointer transition-all duration-200 ${
-          isDragOver
-            ? "border-blue-400 bg-blue-50/50 scale-105"
-            : "border-gray-500/30 hover:border-gray-400/50 hover:bg-gray-50/50"
-        }`}
-        onClick={triggerFileInput}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragEnter}
+        onClick={() => fileInputRef.current?.click()}
         onDrop={handleDrop}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragOver(true);
+        }}
+        onDragLeave={() => setIsDragOver(false)}
+        className={`border-2 border-dashed rounded-md p-8 text-center cursor-pointer transition-all ${
+          isDragOver ? "bg-blue-50 border-blue-400" : "bg-white border-gray-300"
+        }`}
       >
-        <div className="flex flex-col items-center justify-center space-y-2">
-          <FiUpload
-            className={`w-12 h-12 ${
-              isDragOver ? "text-blue-500" : "text-gray-400"
-            }`}
-          />
-          <p
-            className={`text-lg font-medium ${
-              isDragOver ? "text-blue-700" : "text-gray-700"
-            }`}
-          >
-            {isDragOver ? "Drop files here" : "Drag and drop files here"}
-          </p>
-          <p className="text-sm text-gray-500">or click to browse</p>
-          <p className="text-xs text-gray-400">
-            Accepted files: PDF, DOCX, TXT, MD, HTML (Max 10MB each)
-          </p>
-        </div>
+        <FiUpload className="w-10 h-10 mx-auto text-gray-400" />
+        <p className="text-gray-700 mt-2">
+          Drag & drop files here or click to upload
+        </p>
+        <p className="text-xs text-gray-400">
+          Accepted: PDF, DOCX, TXT, MD, HTML • Max 10MB each
+        </p>
         <input
-          ref={fileInputRef}
           type="file"
-          onChange={handleFileChange}
-          className="hidden"
           multiple
+          ref={fileInputRef}
+          onChange={handleFileChange}
           accept={allowedExtensions.join(",")}
+          className="hidden"
         />
       </div>
 
-      {/** Table */}
       {!isLoading && (
-        <div className="mt-5">
+        <div className="mt-6">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-medium text-gray-200">
+            <h3 className="text-lg font-medium text-gray-800">
               Documents ({files.length})
             </h3>
             <button
-              onClick={refreshFiles}
-              disabled={isRefreshing}
-              className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md bg-white hover:bg-gray-50 disabled:opacity-50"
+              onClick={async () => {
+                setIsRefreshing(true);
+                await fetchFiles();
+                setIsRefreshing(false);
+              }}
+              className="flex items-center text-sm px-3 py-2 border rounded-md"
             >
               <FiRefreshCw
                 className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`}
@@ -407,12 +409,12 @@ const UploadFile = () => {
           </div>
 
           {files.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <FiFile className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-              <p>No documents uploaded yet</p>
+            <div className="text-center text-gray-500 py-10">
+              <FiFile className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+              No documents uploaded
             </div>
           ) : (
-            <Table data={files} columns={columns} rowKey={(row) => row.id} />
+            <Table data={files} columns={columns} rowKey={(r) => r.id} />
           )}
         </div>
       )}
