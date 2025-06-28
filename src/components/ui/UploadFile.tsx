@@ -18,6 +18,7 @@ import {
   getFileType,
   getStatusColor,
   getTypeColor,
+  waitForDocument,
 } from "@/utils/helper";
 import { FileItem } from "@/features/upload-documents/types/fileItem";
 
@@ -76,27 +77,120 @@ const UploadFile = () => {
       setIsLoading(false);
     }
   };
+  /*
+  const processFile = async (documentId: string) => {
+  if (!documentId) return { success: false, error: "Missing document ID" };
+
+  try {
+    // Step 1: Call /api/documents/process
+    const response = await fetch("/api/documents/process", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentId }),
+    });
+
+    const responseText = await response.text();
+
+    if (!responseText.trim()) {
+      return { success: false, error: "Empty server response" };
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(responseText);
+    } catch {
+      return responseText.includes("<html")
+        ? { success: false, error: "Server returned HTML instead of JSON" }
+        : {
+            success: false,
+            error: `Invalid JSON: ${responseText.slice(0, 200)}...`,
+          };
+    }
+
+    if (!response.ok) {
+      return { success: false, error: parsed?.error || "Processing failed" };
+    }
+
+    // Step 2: If process is true, call the update API
+    if (parsed?.data?.process === true) {
+      const updateRes = await fetch(`/api/documents/${documentId}/process`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ process: true }),
+      });
+
+      const updateJson = await updateRes.json();
+
+      if (!updateRes.ok || !updateJson.success) {
+        return {
+          success: false,
+          error: updateJson?.error || "Failed to update process field",
+        };
+      }
+
+      return {
+        success: true,
+        data: updateJson.data,
+      };
+    }
+
+    return {
+      success: false,
+      error: "Processing did not return process: true",
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err?.message || "Unexpected error",
+    };
+  }
+};
+
+*/
 
   const processFile = async (documentId: string) => {
-    if (!documentId) return { success: false, error: "Missing document ID" };
+    console.log("🚀 Starting processFile for documentId:", documentId);
+
+    if (!documentId) {
+      console.error("❌ Missing document ID");
+      return { success: false, error: "Missing document ID" };
+    }
 
     try {
-      const response = await fetch("/api/documents/process", {
+      // Step 1: Call /api/documents/vectorize (which calls process internally)
+      console.log("📡 Step 1: Calling vectorize API...");
+
+      const response = await fetch("/api/documents/vectorize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ documentId }),
       });
 
+      console.log(
+        "📡 Vectorize response status:",
+        response.status,
+        response.statusText
+      );
+      console.log(
+        "📡 Vectorize response headers:",
+        Object.fromEntries(response.headers.entries())
+      );
+
       const responseText = await response.text();
+      console.log("📡 Vectorize raw response:", responseText.substring(0, 500));
 
       if (!responseText.trim()) {
+        console.error("❌ Empty server response from vectorize");
         return { success: false, error: "Empty server response" };
       }
 
+      // Parse response
       let parsed;
       try {
         parsed = JSON.parse(responseText);
-      } catch {
+        console.log("✅ Vectorize parsed response:", parsed);
+      } catch (parseError) {
+        console.error("❌ Failed to parse vectorize response:", parseError);
         return responseText.includes("<html")
           ? { success: false, error: "Server returned HTML instead of JSON" }
           : {
@@ -106,16 +200,80 @@ const UploadFile = () => {
       }
 
       if (!response.ok) {
-        return { success: false, error: parsed?.error || "Processing failed" };
+        console.error("❌ Vectorize API failed:", parsed?.error);
+        return {
+          success: false,
+          error: parsed?.error || "Vectorization failed",
+        };
       }
 
-      return parsed.success
-        ? { success: true, data: parsed.data }
-        : {
+      // Step 2: If vectorize was successful, mark as processed in DB
+      if (parsed?.success) {
+        console.log("📡 Step 2: Updating process field in DB...");
+
+        const updateRes = await fetch(`/api/documents/${documentId}/process`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ process: true }),
+        });
+
+        console.log(
+          "📡 Process update response status:",
+          updateRes.status,
+          updateRes.statusText
+        );
+
+        const updateResponseText = await updateRes.text();
+        console.log("📡 Process update raw response:", updateResponseText);
+
+        let updateJson;
+        try {
+          updateJson = JSON.parse(updateResponseText);
+          console.log("✅ Process update parsed response:", updateJson);
+        } catch (parseError) {
+          console.error(
+            "❌ Failed to parse process update response:",
+            parseError
+          );
+          return {
             success: false,
-            error: parsed?.error || "Unknown processing error",
+            error: `Failed to parse update response: ${updateResponseText.slice(
+              0,
+              200
+            )}`,
           };
+        }
+
+        if (!updateRes.ok || !updateJson.success) {
+          console.error(
+            "❌ Failed to update process field:",
+            updateJson?.error
+          );
+          return {
+            success: false,
+            error: updateJson?.error || "Failed to update process field",
+          };
+        }
+
+        console.log("✅ Successfully processed file!");
+        return {
+          success: true,
+          data: {
+            vectorizeMessage: parsed.message,
+            storedChunks: parsed.storedChunks,
+            updatedDocument: updateJson.data,
+          },
+        };
+      }
+
+      console.error("❌ Vectorization did not return success flag");
+      return {
+        success: false,
+        error: "Vectorization completed but success flag not set",
+      };
     } catch (err: any) {
+      console.error("❌ Unexpected error in processFile:", err);
+      console.error("❌ Error stack:", err.stack);
       return {
         success: false,
         error: err?.message || "Unexpected error",
@@ -123,6 +281,7 @@ const UploadFile = () => {
     }
   };
 
+  /*  ====== Old ====================
   const uploadFile = async (file: File) => {
     const tempId = `temp-${Date.now()}`;
     const newFile: FileItem = {
@@ -131,7 +290,7 @@ const UploadFile = () => {
       type: getFileType(file.name),
       size: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
       date: new Date().toLocaleString(),
-      status: "Processing",
+      status: "Uploading", // Changed from "Processing" to be more clear
       process: false,
     };
 
@@ -142,10 +301,7 @@ const UploadFile = () => {
       const formData = new FormData();
       formData.append("file", file);
 
-      // ================
-
-      // ===============
-
+      // Upload the file
       const response = await fetch("/api/documents", {
         method: "POST",
         body: formData,
@@ -162,6 +318,8 @@ const UploadFile = () => {
       if (!response.ok) throw new Error(result.error || "Upload failed");
 
       const actualId = result.id || `uploaded-${Date.now()}`;
+
+      // Step 1: Update status to "Uploaded" after successful upload
       setFiles((prev) =>
         prev.map((f) =>
           f.id === tempId
@@ -176,6 +334,132 @@ const UploadFile = () => {
         )
       );
       setUploadProgress((prev) => ({ ...prev, [tempId]: 100 }));
+
+      // Step 2: Process the file
+      console.log("Starting file processing for ID:", actualId);
+
+      // Update status to show processing is in progress
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === actualId ? { ...f, status: "Processing" } : f
+        )
+      );
+
+      const processed = await processFile(actualId);
+      console.log("Processing result from frontend:", processed);
+
+      // Step 3: Update status based on processing result
+      if (processed.success) {
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.id === actualId ? { ...f, status: "Processed", process: true } : f
+          )
+        );
+        setIsProcessed(true);
+        console.log("File successfully processed:", actualId);
+      } else {
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.id === actualId
+              ? { ...f, status: "Processing Failed", process: false }
+              : f
+          )
+        );
+        setErrors((prev) => [...prev, `Processing error: ${processed.error}`]);
+        console.error("Processing failed:", processed.error);
+      }
+
+      // Refresh the files list after a short delay to sync with server
+      setTimeout(fetchFiles, 1000);
+    } catch (err: any) {
+      console.error("Upload error:", err);
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === tempId ? { ...f, status: "Upload Failed" } : f
+        )
+      );
+      setErrors((prev) => [
+        ...prev,
+        `Upload error: ${err?.message || "Unknown"}`,
+      ]);
+    } finally {
+      // Clean up progress indicator after a delay
+      setTimeout(() => {
+        setUploadProgress((prev) => {
+          const updated = { ...prev };
+          delete updated[tempId];
+          return updated;
+        });
+      }, 2000);
+    }
+  };
+
+  */
+
+  const uploadFile = async (file: File) => {
+    const tempId = `temp-${Date.now()}`;
+    const newFile: FileItem = {
+      id: tempId,
+      name: file.name,
+      type: getFileType(file.name),
+      size: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
+      date: new Date().toLocaleString(),
+      status: "Uploading",
+      process: false,
+    };
+
+    setFiles((prev) => [newFile, ...prev]);
+    setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }));
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/documents", {
+        method: "POST",
+        body: formData,
+      });
+
+      const text = await response.text();
+      let result;
+      try {
+        result = JSON.parse(text);
+      } catch {
+        throw new Error("Non-JSON server response");
+      }
+
+      if (!response.ok) throw new Error(result.error || "Upload failed");
+
+      const actualId = result.id;
+      if (!actualId) throw new Error("No document ID returned from server");
+
+      // Step 1: Update UI with uploaded status
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === tempId
+            ? {
+                ...f,
+                id: actualId,
+                status: "Uploaded",
+                url: result.url,
+                process: false,
+              }
+            : f
+        )
+      );
+      setUploadProgress((prev) => ({ ...prev, [tempId]: 100 }));
+
+      // Step 2: Wait for the document to exist in DB before processing
+      const isReady = await waitForDocument(actualId);
+      if (!isReady) throw new Error("Document not found in DB after upload");
+
+      // Step 3: Process
+      console.log("Starting file processing for ID:", actualId);
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === actualId ? { ...f, status: "Processing" } : f
+        )
+      );
 
       const processed = await processFile(actualId);
 
@@ -199,8 +483,11 @@ const UploadFile = () => {
 
       setTimeout(fetchFiles, 1000);
     } catch (err: any) {
+      console.error("Upload error:", err);
       setFiles((prev) =>
-        prev.map((f) => (f.id === tempId ? { ...f, status: "Failed" } : f))
+        prev.map((f) =>
+          f.id === tempId ? { ...f, status: "Upload Failed" } : f
+        )
       );
       setErrors((prev) => [
         ...prev,
@@ -331,7 +618,7 @@ const UploadFile = () => {
   return (
     <>
       {errors.length > 0 && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
+        <div className="mb-4 p-4 bg-gray-50 border border-red-200 rounded-md">
           <div className="flex justify-between items-center">
             <div className="flex items-center">
               <FiAlertCircle className="h-5 w-5 text-red-400 mr-2" />
@@ -367,7 +654,9 @@ const UploadFile = () => {
         }}
         onDragLeave={() => setIsDragOver(false)}
         className={`border-2 border-dashed rounded-md p-8 text-center cursor-pointer transition-all ${
-          isDragOver ? "bg-blue-50 border-blue-400" : "bg-white border-gray-300"
+          isDragOver
+            ? "bg-blue-50 border-blue-400"
+            : "bg-gray-700/30 border-gray-800"
         }`}
       >
         <FiUpload className="w-10 h-10 mx-auto text-gray-400" />
@@ -390,7 +679,7 @@ const UploadFile = () => {
       {!isLoading && (
         <div className="mt-6">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-medium text-gray-800">
+            <h3 className="text-lg font-medium text-gray-300">
               Documents ({files.length})
             </h3>
             <button

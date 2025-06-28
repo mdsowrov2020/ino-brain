@@ -66,22 +66,43 @@ export async function DELETE(
 }
 
 export async function GET(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  const { id } = params;
+  const numericId = parseInt(id, 10);
+  const { data, error } = await supabase
+    .from("documents")
+    .select("*")
+    .eq("id", numericId)
+    .maybeSingle();
+
+  if (error || !data) {
+    return new Response(JSON.stringify({ success: false }), { status: 404 });
+  }
+
+  return new Response(JSON.stringify({ success: true, data }), { status: 200 });
+}
+
+export async function PATCH(
   request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
     const { id } = params;
+    const updates = await request.json(); // expects JSON body with fields to update
 
     const { data, error } = await supabase
       .from("documents")
-      .select("*")
+      .update(updates)
       .eq("id", id)
+      .select()
       .single();
 
     if (error || !data) {
       return NextResponse.json(
-        { error: "Document not found" },
-        { status: 404 }
+        { error: "Failed to update document" },
+        { status: 400 }
       );
     }
 

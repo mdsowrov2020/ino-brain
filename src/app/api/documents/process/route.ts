@@ -185,7 +185,8 @@ export async function POST(req: NextRequest) {
       chunkCount: chunks.length,
       rawText:
         rawText.substring(0, 1000) + (rawText.length > 1000 ? "..." : ""), // Truncate for response
-      chunks: chunks.slice(0, 5), // Only return first 5 chunks in response
+      // chunks: chunks.slice(0, 5), // Only return first 5 chunks in response
+      chunks: chunks, // Only return first 5 chunks in response
     });
   } catch (error) {
     console.error("Document processing failed:", error);

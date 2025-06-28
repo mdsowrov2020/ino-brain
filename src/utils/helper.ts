@@ -55,3 +55,25 @@ export const getStatusColor = (status: FileItem["status"]) => {
       return "bg-gray-100 text-gray-800";
   }
 };
+
+// utils/waitForDocument.ts
+export async function waitForDocument(
+  documentId: string,
+  maxRetries = 10,
+  delayMs = 300
+): Promise<boolean> {
+  for (let i = 0; i < maxRetries; i++) {
+    console.log(`🔄 Polling for document ${documentId}, attempt ${i + 1}`);
+    try {
+      const res = await fetch(`/api/documents/${documentId}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.data) return true;
+      }
+    } catch (e) {
+      console.log("Polling failed:", e);
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return false;
+}
