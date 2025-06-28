@@ -577,7 +577,7 @@ const UploadFile = () => {
       header: "Status",
       render: (_, row) => (
         <span
-          className={`px-2 text-xs font-semibold rounded-full ${getStatusColor(
+          className={`px-2 py-1 text-xs font-semibold rounded-md ${getStatusColor(
             row.status
           )}`}
         >
