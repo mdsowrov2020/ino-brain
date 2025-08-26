@@ -10,7 +10,7 @@ import {
   FiAlertCircle,
   FiRefreshCw,
 } from "react-icons/fi";
-import Table, { ColumnDefinition } from "./Table";
+
 import {
   getStatusColor,
   getTypeColor,
@@ -21,6 +21,7 @@ import { FileItem } from "@/features/upload-documents/types/fileItem";
 import { useFiles } from "@/hooks/useFiles";
 import { useUpload } from "@/hooks/useUpload";
 import { useProcess } from "@/hooks/useProcess";
+import Table, { ColumnDefinition } from "@/components/ui/Table";
 
 const allowedExtensions = [".pdf", ".docx", ".txt", ".md", ".html"];
 

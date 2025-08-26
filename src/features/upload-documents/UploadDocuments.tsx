@@ -1,5 +1,5 @@
-import UploadFile from "@/components/ui/UploadFile";
 import React from "react";
+import UploadFile from "./components/UploadFile";
 
 const UploadDocuments = () => {
   return <UploadFile />;

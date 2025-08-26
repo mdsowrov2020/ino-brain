@@ -6,7 +6,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = await params;
+    const { id } = params;
     const numericId = parseInt(id, 10);
     if (isNaN(numericId)) {
       return NextResponse.json(
@@ -15,10 +15,10 @@ export async function DELETE(
       );
     }
 
-    // Fetch the document record to get fileUrl
+    // Step 1: Get the document record to retrieve storagePath
     const { data: document, error: fetchError } = await supabase
       .from("documents")
-      .select("fileUrl")
+      .select("storagePath")
       .eq("id", numericId)
       .single();
 
@@ -29,47 +29,22 @@ export async function DELETE(
       );
     }
 
-    let fullPath = "";
+    const storagePath = document.storagePath;
 
-    try {
-      // Extract path from URL, e.g. "https://xyz.supabase.co/storage/v1/object/public/documents/docs/file.txt"
-      const url = new URL(document.fileUrl);
-
-      // Supabase storage public URLs generally contain /documents/ after domain
-      // We want the path inside bucket, i.e. after `/documents/`
-      const bucketPrefix = "/documents/";
-      const fullUrlPath = url.pathname; // e.g. "/storage/v1/object/public/documents/docs/file.txt"
-      const idx = fullUrlPath.indexOf(bucketPrefix);
-
-      if (idx === -1) {
-        // If URL format unexpected, fallback to fileUrl as is
-        fullPath = document.fileUrl;
-      } else {
-        fullPath = fullUrlPath.substring(idx + bucketPrefix.length); // e.g. "docs/file.txt"
-      }
-    } catch {
-      // If invalid URL, fallback to fileUrl string
-      fullPath = document.fileUrl.startsWith("documents/")
-        ? document.fileUrl.substring("documents/".length)
-        : document.fileUrl;
-    }
-
-    console.log("Deleting file from storage at path:", fullPath);
-
-    // Remove file from storage bucket 'documents'
+    // Step 2: Remove file from Supabase storage
     const { error: storageError } = await supabase.storage
-      .from("documents")
-      .remove([fullPath]);
+      .from("documents") // 👈 bucket name
+      .remove([storagePath]); // 👈 using stored path directly
 
     if (storageError) {
       console.error("Storage deletion error:", storageError);
-      // You can choose to return here if you want to prevent DB deletion on storage failure
-      // For now, continue to delete DB record anyway
-    } else {
-      console.log("File deleted successfully from storage:", fullPath);
+      return NextResponse.json(
+        { error: "Failed to delete file from storage", details: storageError },
+        { status: 500 }
+      );
     }
 
-    // Now delete the document record from DB
+    // Step 3: Delete DB record
     const { error: dbError } = await supabase
       .from("documents")
       .delete()
@@ -78,7 +53,7 @@ export async function DELETE(
     if (dbError) {
       console.error("Database deletion error:", dbError);
       return NextResponse.json(
-        { error: "Failed to delete document", details: dbError },
+        { error: "Failed to delete document from database", details: dbError },
         { status: 500 }
       );
     }
@@ -95,23 +70,52 @@ export async function DELETE(
     );
   }
 }
+
 export async function GET(
   req: Request,
   { params }: { params: { id: string } }
 ) {
-  const { id } = await params;
-  const numericId = parseInt(id, 10);
-  const { data, error } = await supabase
-    .from("documents")
-    .select("*")
-    .eq("id", numericId)
-    .maybeSingle();
+  try {
+    const { id } = await params;
 
-  if (error || !data) {
-    return new Response(JSON.stringify({ success: false }), { status: 404 });
+    // Validate that id is a valid number
+    const numericId = parseInt(id, 10);
+    if (isNaN(numericId)) {
+      return Response.json(
+        { success: false, error: "Invalid ID format" },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabase
+      .from("documents")
+      .select("*")
+      .eq("id", numericId)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Supabase error:", error);
+      return Response.json(
+        { success: false, error: "Database error" },
+        { status: 500 }
+      );
+    }
+
+    if (!data) {
+      return Response.json(
+        { success: false, error: "Document not found" },
+        { status: 404 }
+      );
+    }
+
+    return Response.json({ success: true, data }, { status: 200 });
+  } catch (error) {
+    console.error("API route error:", error);
+    return Response.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    );
   }
-
-  return new Response(JSON.stringify({ success: true, data }), { status: 200 });
 }
 
 export async function PATCH(

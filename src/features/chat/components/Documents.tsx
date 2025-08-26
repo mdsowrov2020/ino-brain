@@ -1,16 +1,16 @@
 import React from "react";
-
-import Button from "@/components/ui/Button";
 import DocumentList from "./DocumentList";
 
-const Documents = () => {
+const Documents = async () => {
+  const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/documents`, {
+    cache: "no-store", // optional
+  });
+  const data = await res.json();
+
   return (
-    <div className=" border border-gray-800/60 rounded-md p-5 h-[94vh] grid grid-rows-[1fr_auto]">
+    <div className=" border border-gray-800/60 rounded-md p-5 h-[94vh] grid grid-rows-1">
       <div className="overflow-y-auto">
-        <DocumentList />
-      </div>
-      <div>
-        <Button className="block w-full mt-5">Add documents</Button>
+        <DocumentList data={data} />
       </div>
     </div>
   );

@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     // Fetch metadata from Supabase with better error handling
     const { data: docMeta, error: metaError } = await supabase
       .from("documents")
-      .select("id, fileName, type,storagePath, fileUrl")
+      .select("id, fileName, type, fileUrl")
       .eq("id", documentId)
       .single();
 
@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
     console.log("Document metadata:", docMeta);
 
     // Extract storage path from fileUrl (assuming it's the filename)
-    const storagePath = docMeta.storagePath;
+    const fileName = docMeta.fileName;
     const mimeType = getMimeTypeFromExtension(docMeta.type);
 
     if (!mimeType) {
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
     // Download file from Supabase Storage
     const { data: fileData, error: fileError } = await supabase.storage
       .from("documents")
-      .download(storagePath);
+      .download(fileName);
 
     if (fileError) {
       console.error("Storage error:", fileError);

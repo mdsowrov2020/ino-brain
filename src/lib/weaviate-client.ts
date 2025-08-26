@@ -16,6 +16,11 @@
 
 import weaviate from "weaviate-ts-client";
 
+// Validate environment variables
+if (!process.env.NEXT_PUBLIC_WEAVIATE_URL) {
+  throw new Error("NEXT_PUBLIC_WEAVIATE_URL environment variable is required");
+}
+
 const client = weaviate.client({
   scheme: "https",
   host: process.env.NEXT_PUBLIC_WEAVIATE_URL!,
