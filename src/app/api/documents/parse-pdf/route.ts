@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parsePdfDocument } from "@/lib/document-processor/pdfParser";
+// import { parsePdfDocument } from "@/lib/document-processor/pdfParser";
 
 export async function POST(req: NextRequest) {
   const { documentId } = await req.json();
@@ -9,8 +9,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await parsePdfDocument(documentId);
-    return NextResponse.json(result);
+    // const result = await parsePdfDocument(documentId);
+    // return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
       {

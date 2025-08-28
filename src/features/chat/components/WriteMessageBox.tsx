@@ -109,30 +109,6 @@ const WriteMessageBox = ({
       </form>
 
       {/* Status indicators */}
-      <div className="flex items-center justify-between mt-2 px-1">
-        <div className="flex items-center gap-2 text-xs text-gray-500">
-          {!disabled && (
-            <span>Press Enter to send, Shift+Enter for new line</span>
-          )}
-          {disabled && (
-            <span className="text-amber-400">
-              {!input.trim() ? "Loading..." : "Sending message..."}
-            </span>
-          )}
-        </div>
-
-        {/* Connection status (optional) */}
-        <div className="flex items-center gap-1">
-          <div
-            className={`w-2 h-2 rounded-full ${
-              disabled ? "bg-amber-400" : "bg-green-400"
-            }`}
-          ></div>
-          <span className="text-xs text-gray-500">
-            {disabled ? "Sending" : "Ready"}
-          </span>
-        </div>
-      </div>
     </div>
   );
 };

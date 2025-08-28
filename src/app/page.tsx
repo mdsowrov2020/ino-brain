@@ -1,10 +1,10 @@
-import LayoutDashboard from "@/components/sections/dashboard/LayoutDashboard";
 import React from "react";
+import MainPage from "./main/page";
 
 const Home = () => {
   return (
     <>
-      <LayoutDashboard />
+      <MainPage />
     </>
   );
 };

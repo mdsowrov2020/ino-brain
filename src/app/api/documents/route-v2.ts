@@ -2,8 +2,7 @@
 import supabase from "@/lib/supabase";
 import { formatFileSize } from "@/utils/helper";
 import { NextResponse } from "next/server";
-import { v4 as uuidv4 } from "uuid";
-import { auth } from "@clerk/nextjs/server";
+import { v4 as uuidv4 } from "uuid"; // Import UUID generator
 
 // --- Helper Functions ---
 
@@ -12,39 +11,13 @@ import { auth } from "@clerk/nextjs/server";
 // GET method to fetch all documents
 export async function GET() {
   try {
-    // Add authentication to GET as well
-    const { userId } = await auth();
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Unauthorized - Please sign in to view documents" },
-        { status: 401 }
-      );
-    }
-
-    // Get user's email from database
-    const { data: userData } = await supabase
-      .from("users")
-      .select("email")
-      .eq("clerk_id", userId)
-      .single();
-
-    if (!userData?.email) {
-      return NextResponse.json(
-        { error: "User profile not found" },
-        { status: 400 }
-      );
-    }
-
-    // Fetch only user's documents
     const { data, error } = await supabase
       .from("documents")
       .select("*")
-      .eq("email", userData.email)
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("Database fetch error:", error);
+      console.error("Database fetch error:", error); // More specific error logging
       return NextResponse.json(
         { error: "Failed to retrieve documents", details: error.message },
         { status: 500 }
@@ -59,7 +32,7 @@ export async function GET() {
 
     return NextResponse.json(transformedData, { status: 200 });
   } catch (error) {
-    console.error("Server error during GET documents:", error);
+    console.error("Server error during GET documents:", error); // More specific error logging
     return NextResponse.json(
       {
         error: "Internal server error",
@@ -76,40 +49,6 @@ export async function POST(request: Request) {
   console.log("Document upload POST request received.");
 
   try {
-    // --- Authentication Check ---
-    const { userId } = await auth();
-
-    if (!userId) {
-      console.warn("Unauthorized upload attempt - no user ID found.");
-      return NextResponse.json(
-        { error: "Unauthorized - Please sign in to upload documents" },
-        { status: 401 }
-      );
-    }
-
-    console.log(`✅ User authenticated: ${userId}`);
-
-    // --- Get User Email from Database ---
-    const { data: userData, error: userError } = await supabase
-      .from("users")
-      .select("email")
-      .eq("clerk_id", userId)
-      .single();
-
-    if (userError || !userData?.email) {
-      console.error("User not found in database:", userError);
-      return NextResponse.json(
-        {
-          error:
-            "User profile not synced. Please refresh the page and try again.",
-        },
-        { status: 400 }
-      );
-    }
-
-    const userEmail = userData.email;
-    console.log(`✅ Using email: ${userEmail}`);
-
     const formData = await request.formData();
     const file = formData.get("file") as File;
 
@@ -122,23 +61,26 @@ export async function POST(request: Request) {
     const originalFileName = file.name;
     const fileExtension =
       originalFileName.split(".").pop()?.toLowerCase() || "unknown";
-    const fileSize = file.size;
-    const fileMimeType = file.type;
+    const fileSize = file.size; // Size in bytes
+    const fileMimeType = file.type; // Get MIME type from the file object itself if possible, falls back to extension if needed.
 
-    // --- Generate Unique Storage Path (keeping old format for compatibility) ---
+    // --- Generate Unique Storage Path ---
+    // This combines a UUID with the original filename to create a unique key for Supabase Storage.
+    // Example: "e4d7b3a9-1f2c-4e5a-8b9c-0d1e2f3a4b5c-MyDocument.pdf"
     const storagePath = `${uuidv4()}-${originalFileName}`;
 
     console.log(
-      `Preparing to upload: User='${userEmail}', File='${originalFileName}', Size=${fileSize} bytes`
+      `Preparing to upload: Original Name='${originalFileName}', Storage Path='${storagePath}', Size=${fileSize} bytes, Type='${fileMimeType}'`
     );
 
     // --- Upload File to Supabase Storage ---
+    // The `upload` method expects the storagePath (key) and the file blob/File object.
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from("documents")
+      .from("documents") // Ensure 'documents' is the correct bucket name
       .upload(storagePath, file, {
-        cacheControl: "3600",
-        upsert: false,
-        contentType: fileMimeType,
+        cacheControl: "3600", // Cache for 1 hour
+        upsert: false, // Do not overwrite if a file with storagePath already exists (though uuid prevents this)
+        contentType: fileMimeType, // Set content type explicitly
       });
 
     if (uploadError) {
@@ -157,10 +99,11 @@ export async function POST(request: Request) {
     // --- Get Public URL for the Uploaded File ---
     const { data: urlData } = await supabase.storage
       .from("documents")
-      .getPublicUrl(storagePath);
+      .getPublicUrl(storagePath); // Use the unique storagePath to get the URL
 
     if (!urlData || !urlData.publicUrl) {
       console.error("Failed to retrieve public URL for uploaded file.");
+      // Optional: Clean up the uploaded file if URL retrieval fails
       await supabase.storage.from("documents").remove([storagePath]);
       return NextResponse.json(
         { error: "Failed to retrieve public file URL after upload." },
@@ -174,19 +117,19 @@ export async function POST(request: Request) {
     const { data: insertData, error: dbError } = await supabase
       .from("documents")
       .insert({
-        fileName: originalFileName,
-        storagePath: storagePath,
-        fileUrl: urlData.publicUrl,
-        type: fileExtension,
-        size: fileSize,
-        email: userEmail, // Add the email foreign key
+        fileName: originalFileName, // Store original name for display to the user
+        storagePath: storagePath, // Store the unique key used in Supabase Storage
+        fileUrl: urlData.publicUrl, // The publicly accessible URL
+        type: fileExtension, // File extension (e.g., 'pdf', 'docx')
+        size: fileSize, // Size in bytes
+        // Add any other relevant metadata fields here (e.g., user_id, uploaded_by, etc.)
       })
-      .select()
-      .single();
+      .select() // Selects the newly inserted row
+      .single(); // Expects a single result
 
     if (dbError) {
       console.error("Database insert error:", dbError);
-      // Clean up the uploaded file from storage if DB insert fails
+      // IMPORTANT: Clean up the uploaded file from storage if DB insert fails
       await supabase.storage.from("documents").remove([storagePath]);
       return NextResponse.json(
         {
@@ -198,24 +141,24 @@ export async function POST(request: Request) {
     }
 
     console.log(
-      `✅ Document ${originalFileName} saved to DB with ID: ${insertData.id}`
+      `Document ${originalFileName} metadata saved to DB with ID: ${insertData.id}`
     );
 
     // --- Respond to Client ---
     return NextResponse.json(
       {
         message: "Document uploaded successfully",
-        id: insertData.id, // This is what your upload hook expects
+        id: insertData.id,
         fileName: originalFileName,
-        storagePath: storagePath,
+        storagePath: storagePath, // Include storagePath in response for client-side reference if needed
         type: fileExtension,
         size: formatFileSize(fileSize),
         fileUrl: urlData.publicUrl,
-        email: userEmail,
       },
       { status: 200 }
     );
   } catch (error) {
+    // Catch any unexpected errors during the entire process
     console.error("Server error during document upload process:", error);
     return NextResponse.json(
       {
@@ -227,7 +170,7 @@ export async function POST(request: Request) {
             ? error instanceof Error
               ? error.stack
               : undefined
-            : undefined,
+            : undefined, // Include stack in dev
       },
       { status: 500 }
     );

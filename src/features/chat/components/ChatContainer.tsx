@@ -1,9 +1,10 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import MessageBox from "./MessageBox";
 import WriteMessageBox from "./WriteMessageBox";
 import { sendMessageToDocument } from "@/utils/chatApi";
+import { DocumentData, getDocumentById } from "@/utils/documentApi";
 
 const ChatContainer = () => {
   const [input, setInput] = useState("");
@@ -77,25 +78,49 @@ const ChatContainer = () => {
   console.log("Document ID:", documentId);
   console.log("Messages:", messages);
 
+  const [documentName, setDocumentName] = useState("No document selected");
+
+  useEffect(() => {
+    if (!documentId) return;
+
+    // Fetch document when id changes
+    const fetchDoc = async () => {
+      try {
+        const doc: DocumentData = await getDocumentById(documentId);
+        setDocumentName(doc.fileName);
+      } catch (error) {
+        console.error("Failed to fetch document:", error);
+        setDocumentName("Error loading document");
+      }
+    };
+
+    fetchDoc();
+  }, [documentId]);
+
   return (
-    <div className="rounded-md bg-gray-700/30 h-full w-full grid grid-rows-[1fr_80px]">
-      <div className="h-full overflow-y-auto">
-        <MessageBox
-          documentId={documentId}
-          messages={messages}
-          isLoading={isLoading}
+    <>
+      <header className="bg-gray-500/30  px-3 py-5 rounded-tl-md rounded-tr-md">
+        <h4>{documentName}</h4>
+      </header>
+      <div className="rounded-md bg-gray-700/30 h-full w-full grid grid-rows-[1fr_80px]">
+        <div className="h-full overflow-y-auto">
+          <MessageBox
+            documentId={documentId}
+            messages={messages}
+            isLoading={isLoading}
+          />
+        </div>
+        <WriteMessageBox
+          setInput={setInput}
+          input={input}
+          onSendMessage={handleSendMessage}
+          disabled={isLoading || !documentId}
+          placeholder={
+            !documentId ? "No document selected" : "Type your message..."
+          }
         />
       </div>
-      <WriteMessageBox
-        setInput={setInput}
-        input={input}
-        onSendMessage={handleSendMessage}
-        disabled={isLoading || !documentId}
-        placeholder={
-          !documentId ? "No document selected" : "Type your message..."
-        }
-      />
-    </div>
+    </>
   );
 };
 

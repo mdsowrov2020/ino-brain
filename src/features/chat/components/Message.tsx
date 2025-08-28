@@ -26,15 +26,17 @@ const Message = ({
       return "bg-red-500/20 text-red-200 border border-red-500/30";
     }
     if (sender === "user") {
-      return "bg-blue-600/80 text-white";
+      return "bg-blue-600/80 text-white  ";
     }
     return "bg-gray-700/70 text-gray-300";
   };
 
   return (
-    <div className={`flex flex-col gap-1 ${className}`}>
+    <div className={`flex flex-col  gap-1 ${className}`}>
       <p
-        className={`inline-block p-4 rounded-2xl max-w-[70%] break-words ${getMessageStyles()}`}
+        className={`inline-block p-4 rounded-2xl w-[70%] ${
+          sender === "user" ? "self-end" : ""
+        }  break-words ${getMessageStyles()}`}
       >
         {message}
       </p>

@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React from "react";
+import LogoutButton from "../AuthBtn";
 
 interface NavItems {
   title: string;
@@ -39,6 +40,7 @@ const NavItem = () => {
           </li>
         );
       })}
+      <LogoutButton />
     </ul>
   );
 };

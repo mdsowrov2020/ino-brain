@@ -2,35 +2,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 
-// FORCE Node.js runtime explicitly
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
-// Add a simple GET method for testing route accessibility
-export async function GET() {
-  console.log("🔍 GET request to process route - Route is accessible!");
-  return NextResponse.json({
-    message: "Process route is accessible",
-    runtime: "nodejs",
-    timestamp: new Date().toISOString(),
-  });
-}
-
-// Simple fallback functions that don't require external imports
-function extractTextFallback(buffer: Buffer, mimeType: string): string {
-  // For now, return a placeholder - we'll improve this
-  return `Extracted text from ${mimeType} file (${buffer.length} bytes). This is a fallback implementation.`;
-}
-
-function chunkTextFallback(text: string): string[] {
-  const chunkSize = 1000;
-  const chunks = [];
-  for (let i = 0; i < text.length; i += chunkSize) {
-    chunks.push(text.slice(i, i + chunkSize));
-  }
-  return chunks;
-}
-
 // Import the processor functions with error handling
 async function safeExtractText(
   buffer: Buffer,
@@ -40,9 +11,12 @@ async function safeExtractText(
     const { extractText } = await import("@/lib/document-processor");
     return await extractText(buffer, mimeType);
   } catch (error) {
-    console.error("Text extraction failed, using fallback:", error);
-    // Use simple fallback instead of complex import
-    return extractTextFallback(buffer, mimeType);
+    console.error("Text extraction failed:", error);
+    throw new Error(
+      `Failed to extract text: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
   }
 }
 
@@ -51,14 +25,17 @@ async function safeChunkText(text: string): Promise<string[]> {
     const { chunkText } = await import("@/lib/document-processor");
     return chunkText(text);
   } catch (error) {
-    console.error("Text chunking failed, using fallback:", error);
-    // Use simple fallback
-    return chunkTextFallback(text);
+    console.error("Text chunking failed:", error);
+    throw new Error(
+      `Failed to chunk text: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
   }
 }
 
 export async function POST(req: NextRequest) {
-  console.log("🚀 Document processing API called - Node.js Runtime");
+  console.log("Document processing API called");
 
   try {
     // Parse request body with error handling
@@ -66,9 +43,8 @@ export async function POST(req: NextRequest) {
     try {
       const body = await req.json();
       documentId = body.documentId;
-      console.log("📝 Request body parsed successfully:", { documentId });
     } catch (error) {
-      console.error("❌ Failed to parse request body:", error);
+      console.error("Failed to parse request body:", error);
       return NextResponse.json(
         { error: "Invalid request body" },
         { status: 400 }
@@ -76,24 +52,23 @@ export async function POST(req: NextRequest) {
     }
 
     if (!documentId) {
-      console.error("❌ Missing documentId in request");
       return NextResponse.json(
         { error: "Missing documentId" },
         { status: 400 }
       );
     }
 
-    console.log("✅ Processing document ID:", documentId);
+    console.log("Processing document ID:", documentId);
 
     // Fetch metadata from Supabase with better error handling
     const { data: docMeta, error: metaError } = await supabase
       .from("documents")
-      .select("id, fileName, type, storagePath, fileUrl")
+      .select("id, fileName, type,storagePath, fileUrl")
       .eq("id", documentId)
       .single();
 
     if (metaError) {
-      console.error("❌ Database error:", metaError);
+      console.error("Database error:", metaError);
       return NextResponse.json(
         { error: "Database error", details: metaError.message },
         { status: 500 }
@@ -101,37 +76,32 @@ export async function POST(req: NextRequest) {
     }
 
     if (!docMeta) {
-      console.error("❌ Document not found for ID:", documentId);
       return NextResponse.json(
         { error: "Document not found" },
         { status: 404 }
       );
     }
 
-    console.log("✅ Document metadata retrieved:", docMeta);
+    console.log("Document metadata:", docMeta);
 
     // Extract storage path from fileUrl (assuming it's the filename)
     const storagePath = docMeta.storagePath;
     const mimeType = getMimeTypeFromExtension(docMeta.type);
 
     if (!mimeType) {
-      console.error("❌ Unsupported file type:", docMeta.type);
       return NextResponse.json(
         { error: `Unsupported file type: ${docMeta.type}` },
         { status: 400 }
       );
     }
 
-    console.log("✅ MIME type determined:", mimeType);
-
     // Download file from Supabase Storage
-    console.log("⬇️ Downloading file from storage:", storagePath);
     const { data: fileData, error: fileError } = await supabase.storage
       .from("documents")
       .download(storagePath);
 
     if (fileError) {
-      console.error("❌ Storage error:", fileError);
+      console.error("Storage error:", fileError);
       return NextResponse.json(
         { error: "Failed to download file", details: fileError.message },
         { status: 500 }
@@ -139,19 +109,17 @@ export async function POST(req: NextRequest) {
     }
 
     if (!fileData) {
-      console.error("❌ File data is empty");
       return NextResponse.json(
         { error: "File data is empty" },
         { status: 500 }
       );
     }
 
-    console.log("✅ File downloaded successfully, size:", fileData.size);
+    console.log("File downloaded successfully, size:", fileData.size);
 
     // Convert to buffer with size limit
     if (fileData.size > 10 * 1024 * 1024) {
       // 10MB limit
-      console.error("❌ File too large:", fileData.size);
       return NextResponse.json(
         { error: "File too large (max 10MB)" },
         { status: 413 }
@@ -159,12 +127,11 @@ export async function POST(req: NextRequest) {
     }
 
     const buffer = Buffer.from(await fileData.arrayBuffer());
-    console.log("✅ Buffer created, size:", buffer.length);
+    console.log("Buffer created, size:", buffer.length);
 
     // Extract text with timeout
     let rawText: string;
     try {
-      console.log("🔄 Starting text extraction...");
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("Processing timeout")), 30000)
       );
@@ -173,10 +140,8 @@ export async function POST(req: NextRequest) {
         safeExtractText(buffer, mimeType),
         timeoutPromise,
       ]);
-
-      console.log("✅ Text extraction completed");
     } catch (error) {
-      console.error("❌ Text extraction failed:", error);
+      console.error("Text extraction failed:", error);
       return NextResponse.json(
         {
           error: "Text extraction failed",
@@ -187,23 +152,20 @@ export async function POST(req: NextRequest) {
     }
 
     if (!rawText || rawText.trim().length === 0) {
-      console.error("❌ No text content found in document");
       return NextResponse.json(
         { error: "No text content found in document" },
         { status: 400 }
       );
     }
 
-    console.log("✅ Text extracted, length:", rawText.length);
+    console.log("Text extracted, length:", rawText.length);
 
     // Chunk text
     let chunks: string[];
     try {
-      console.log("🔄 Starting text chunking...");
       chunks = await safeChunkText(rawText);
-      console.log("✅ Text chunked into", chunks.length, "chunks");
     } catch (error) {
-      console.error("❌ Text chunking failed:", error);
+      console.error("Text chunking failed:", error);
       return NextResponse.json(
         {
           error: "Text chunking failed",
@@ -213,7 +175,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    console.log("🎉 Processing completed successfully!");
+    console.log("Text chunked into", chunks.length, "chunks");
 
     return NextResponse.json({
       success: true,
@@ -223,10 +185,11 @@ export async function POST(req: NextRequest) {
       chunkCount: chunks.length,
       rawText:
         rawText.substring(0, 1000) + (rawText.length > 1000 ? "..." : ""), // Truncate for response
-      chunks: chunks, // Return all chunks
+      // chunks: chunks.slice(0, 5), // Only return first 5 chunks in response
+      chunks: chunks, // Only return first 5 chunks in response
     });
   } catch (error) {
-    console.error("💥 Document processing failed:", error);
+    console.error("Document processing failed:", error);
     return NextResponse.json(
       {
         error: "Internal server error",
