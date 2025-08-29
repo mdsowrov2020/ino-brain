@@ -1,38 +1,32 @@
 "use client";
-
 import { ReactNode, useEffect, useState } from "react";
 import { SignIn, useUser } from "@clerk/nextjs";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
+import LayoutMain from "@/components/sections/layout/LayoutMain";
 import supabase from "@/lib/supabase";
 
-type AuthProviderProps = {
+type AuthWrapperProps = {
   children: ReactNode;
 };
 
-export const AuthProvider = ({ children }: AuthProviderProps) => {
+export const AuthWrapper = ({ children }: AuthWrapperProps) => {
   const { user, isLoaded } = useUser();
-  const router = useRouter();
   const pathname = usePathname();
   const [syncStatus, setSyncStatus] = useState<
     "idle" | "syncing" | "success" | "error"
   >("idle");
 
+  // Sync user with Supabase
   useEffect(() => {
     const syncUserWithSupabase = async () => {
-      if (!isLoaded || !user) {
-        console.log("Auth Provider: User not loaded or not authenticated");
-        return;
-      }
+      if (!isLoaded || !user) return;
 
       setSyncStatus("syncing");
-      console.log("Auth Provider: Starting user sync...");
 
       try {
         const { id, fullName, imageUrl, primaryEmailAddress } = user;
 
-        // Validate email exists
         if (!primaryEmailAddress?.emailAddress) {
-          console.error("Auth Provider: No email found for user");
           setSyncStatus("error");
           return;
         }
@@ -44,34 +38,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           image_url: imageUrl || "",
         };
 
-        console.log("Auth Provider: Syncing user data:", userData);
-
-        // Insert or update user in Supabase
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from("users")
-          .upsert(userData, {
-            onConflict: "clerk_id",
-          })
+          .upsert(userData, { onConflict: "clerk_id" })
           .select();
 
         if (error) {
-          console.error(
-            "Auth Provider: Error syncing user to Supabase:",
-            error
-          );
-          console.error("Auth Provider: Error details:", {
-            message: error.message,
-            details: error.details,
-            hint: error.hint,
-            code: error.code,
-          });
+          console.error("Sync error:", error);
           setSyncStatus("error");
         } else {
-          console.log("Auth Provider: User synced successfully:", data);
           setSyncStatus("success");
         }
       } catch (err) {
-        console.error("Auth Provider: Unexpected error during sync:", err);
+        console.error("Unexpected sync error:", err);
         setSyncStatus("error");
       }
     };
@@ -79,18 +58,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     syncUserWithSupabase();
   }, [user, isLoaded]);
 
-  // Debug: Log current auth state
-  useEffect(() => {
-    console.log("Auth Provider State:", {
-      isLoaded,
-      hasUser: !!user,
-      userId: user?.id,
-      email: user?.primaryEmailAddress?.emailAddress,
-      syncStatus,
-    });
-  }, [isLoaded, user, syncStatus]);
-
-  // Show loading state while Clerk is initializing
+  // Show loading while Clerk initializes
   if (!isLoaded) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -102,8 +70,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     );
   }
 
-  // Show sign-in page for unauthenticated users
-  if (!user) {
+  // Public routes that don't need authentication
+  const publicRoutes = ["/sign-in", "/sign-up"];
+  const isPublicRoute = publicRoutes.includes(pathname);
+
+  // Show sign-in for unauthenticated users on protected routes
+  if (!user && !isPublicRoute) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
         <SignIn
@@ -117,8 +89,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     );
   }
 
-  // Optionally show sync status for authenticated users
-  if (syncStatus === "syncing") {
+  // Show sync loading for authenticated users
+  if (user && syncStatus === "syncing") {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -129,5 +101,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     );
   }
 
+  // For authenticated users on protected routes, wrap with LayoutMain
+  if (user && !isPublicRoute) {
+    return <LayoutMain>{children}</LayoutMain>;
+  }
+
+  // For public routes or unauthenticated users, render children directly
   return <>{children}</>;
 };
