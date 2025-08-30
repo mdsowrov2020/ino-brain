@@ -125,48 +125,6 @@ export async function POST(request: Request) {
     const fileSize = file.size;
     const fileMimeType = file.type;
 
-    // --- Check for Duplicate File Name ---
-    console.log(
-      `Checking for duplicate file: ${originalFileName} for user: ${userEmail}`
-    );
-
-    const { data: existingFile, error: duplicateCheckError } = await supabase
-      .from("documents")
-      .select("id, fileName")
-      .eq("email", userEmail)
-      .eq("fileName", originalFileName)
-      .single();
-
-    if (duplicateCheckError && duplicateCheckError.code !== "PGRST116") {
-      // PGRST116 is "not found" error, which is expected when no duplicate exists
-      console.error("Error checking for duplicate file:", duplicateCheckError);
-      return NextResponse.json(
-        {
-          error: "Failed to check for duplicate files",
-          details: duplicateCheckError.message,
-        },
-        { status: 500 }
-      );
-    }
-
-    if (existingFile) {
-      console.warn(
-        `Duplicate file detected: ${originalFileName} already exists for user: ${userEmail}`
-      );
-      return NextResponse.json(
-        {
-          error: "File already exists",
-          message: `A file named "${originalFileName}" already exists in your documents. Please rename the file or choose a different file.`,
-          fileName: originalFileName,
-        },
-        { status: 409 } // 409 Conflict status code for duplicate resource
-      );
-    }
-
-    console.log(
-      `✅ No duplicate found. Proceeding with upload for: ${originalFileName}`
-    );
-
     // --- Generate Unique Storage Path (keeping old format for compatibility) ---
     const storagePath = `${uuidv4()}-${originalFileName}`;
 

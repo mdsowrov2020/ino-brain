@@ -41,7 +41,7 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
         <div className="relative group">
           <button
             className="w-full flex items-center justify-center py-3 rounded-lg bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
-            onClick={() => signOut(() => (window.location.href = "/sign-in"))}
+            onClick={() => signOut({ redirectUrl: "/sign-in" })}
           >
             <LogOut size={18} />
           </button>
@@ -57,7 +57,7 @@ export default function AuthButton({ isCollapsed = false }: AuthButtonProps) {
     return (
       <button
         className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-4 py-2.5 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center gap-2 font-medium justify-center"
-        onClick={() => signOut(() => (window.location.href = "/sign-in"))}
+        onClick={() => signOut({ redirectUrl: "/sign-in" })}
       >
         <LogOut size={18} />
         <span>Logout</span>
