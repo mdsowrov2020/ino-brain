@@ -1,44 +1,3 @@
-// import { chatWithHuggingFace } from "@/lib/hugging-face/huggingface";
-// import { saveChatHistory } from "@/lib/saveChatHistory";
-// import { getChunksByDocumentId } from "@/lib/weaviate/getChunks";
-// import { NextRequest, NextResponse } from "next/server";
-
-// export async function POST(req: NextRequest) {
-//   const { documentId, userMessage, userId = null } = await req.json();
-
-//   if (!documentId || !userMessage) {
-//     return NextResponse.json(
-//       { error: "Missing documentId or userMessage" },
-//       { status: 400 }
-//     );
-//   }
-
-//   const chunks = await getChunksByDocumentId(documentId);
-//   const context = chunks.map((chunk: any) => chunk.text).join("\n");
-
-//   const prompt = `
-// You are a helpful assistant. Based on the following document content:
-// ${context}
-
-// User: ${userMessage}
-// Assistant:
-//   `.trim();
-
-//   const reply = await chatWithHuggingFace(prompt);
-
-//   await saveChatHistory(
-//     documentId,
-//     [
-//       { role: "user", content: userMessage },
-//       { role: "assistant", content: reply },
-//     ],
-//     userId
-//   );
-
-//   return NextResponse.json({ reply });
-// }
-
-// =====================================================================================
 import { saveChatHistory } from "@/lib/saveChatHistory";
 import { getChunksByDocumentId } from "@/lib/weaviate/getChunks";
 import { NextRequest, NextResponse } from "next/server";
@@ -108,6 +67,12 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    console.log(
+      `Processing chat for documentId: ${documentId}, userId: ${
+        userId || "anonymous"
+      }`
+    );
 
     // Future auth implementation with Clerk
     // const { userId: clerkUserId } = auth();
@@ -188,22 +153,31 @@ Assistant:`.trim();
       );
     }
 
-    // Save chat history (commented out for now)
-    // try {
-    //   await saveChatHistory(
-    //     documentId,
-    //     [
-    //       { role: "user", content: userMessage },
-    //       { role: "assistant", content: reply },
-    //     ],
-    //     userId // or clerkUserId/user.id from auth
-    //   );
-    // } catch (error) {
-    //   console.error("Error saving chat history:", error);
-    //   // Don't return error here as the main functionality worked
-    // }
+    console.log(`✅ Got response from Ollama, preparing to save chat history`);
 
-    return NextResponse.json({ reply });
+    // Save chat history to Supabase
+    try {
+      await saveChatHistory(
+        documentId,
+        [
+          { role: "user", content: userMessage },
+          { role: "assistant", content: reply },
+        ],
+        userId // Pass the userId from request body
+      );
+      console.log(
+        `✅ Chat history saved successfully for documentId: ${documentId}`
+      );
+    } catch (error) {
+      console.error("Error saving chat history:", error);
+      // Log the error but don't return it as the main functionality worked
+      // You might want to implement a retry mechanism or alert system here
+    }
+
+    return NextResponse.json({
+      reply,
+      chatSaved: true, // Indicate that chat was attempted to be saved
+    });
   } catch (error) {
     console.error("Unexpected error in chat API:", error);
     return NextResponse.json(
